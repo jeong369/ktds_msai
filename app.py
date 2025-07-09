@@ -4,6 +4,21 @@ from docx import Document
 import zipfile
 import requests
 import pandas as pd 
+import json
+import matplotlib.pyplot as plt
+import matplotlib.font_manager as fm
+
+# 한글 폰트 설정
+# plt.rcParams['font.family'] = 'Malgun Gothic'
+# plt.rcParams['axes.unicode_minus'] = False
+
+# 프로젝트 내 폰트 경로 <- 웹앱에서 폰트 별도 없기 때문에 matplotlib에 폰트 등록
+font_path = os.path.join("font", "NanumGothic-Bold.ttf")
+fontprop = fm.FontProperties(fname=font_path)
+plt.rcParams['font.family'] = fontprop.get_name()
+plt.rcParams['axes.unicode_minus'] = False
+fm.fontManager.addfont(font_path)  # 강제 등록
+
 
 # import openai
 from openai import AzureOpenAI
@@ -59,6 +74,27 @@ client = AzureOpenAI(
 )
 
 
+DATA_PATH = "streamlit_data/ia_docx_parsed.json"
+WORD_DOCS_DIR = "streamlit_data/ia_docx"
+
+
+# --- 공통 함수 ---
+def load_data():
+    if os.path.exists(DATA_PATH):
+        with open(DATA_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    return []
+
+# 팀 목록 불러오기 함수
+def extract_teams(data):
+    teams = set()
+    for doc in data:
+        for part in doc.get("parts", []):
+            teams.add(part["part_name"])
+    return sorted(list(teams))
+
+def get_next_doc_id(data):
+    return f"{len(data) + 1:03d}"
 
 # --- 유사 문서 검색 ---
 def get_embedding(text):
@@ -97,24 +133,44 @@ def analyze_parts(prompt, similar_docs):
     # GPT에게 보낼 시스템 및 사용자 메시지
     system_msg = "너는 IT 회사의 소프트웨어 운영팀에서 사용하는 AI 분석 도우미야.\n" \
                  "고객이 입력한 요구사항과 유사한 문서를 바탕으로 어떤 파트(업무 영역)와 연관 있는지를 판단해. " \
-                 "각 파트별 연관도를 0.0 ~ 1.0 사이 수치로 출력해줘."
+                 "각 파트별 연관도를 0.0 ~ 1.0 사이 수치로 출력해줘." \
+                 "키워드 기반으로 유사한 IA문서도 보여줘"
 
     user_msg = f"""
-너는 소프트웨어 개발팀의 AI 도우미야. 고객 요구사항을 분석해서 아래 파트들과 얼마나 연관 있는지 0~1 사이 점수로 표현해줘.
+[시스템 역할 지시]너는 IT 회사의 소프트웨어 운영팀에서 사용하는 AI 분석 도우미야.
+너의 역할은 다음과 같아:
+1. 고객이 입력한 요구사항과 유사한 산출물(IA 문서)을 보여주고,
+2. 그 문서들과 비교해봤을 때 어떤 파트(업무 영역)가 이 요구사항과 연관되어 있는지를 추론해,
+3. 각 파트별 연관도를 수치(0~1.0)로 출력해줘. (1.0에 가까울수록 연관이 높음)
 
-요구사항: "{prompt}"
+[입력된 고객 요구사항]
+요구사항: "{prompt}" ← 사용자의 실제 입력이 들어갈 자리
 
-예시:
+[IA 문서 예시]
+※ 다음은 벡터 유사도로 검색된 실제 IA 산출물들이다. 각 문서에는 관련된 요구사항과 담당 파트가 포함되어 있다.
 {examples}
 
-응답 형식(JSON):
+[분석 방식]
+- 각 IA 문서의 내용, 연관 파트를 참고하여 현재 요구사항이 어떤 파트와 관련이 있는지 판단해.
+- 기능 영역, UI/UX, 모니터링, 운영 자동화, 수납, 요금 등의 키워드를 활용해서 판단하되, 단순 키워드 일치보다 문맥의 목적과 작업 흐름을 중점으로 판단해.
+- 관련된 파트는 여러 개일 수 있으며, 각 파트에 대해 0.0 ~ 1.0 사이 연관도 점수를 정수 두 자릿수 소수로 표시해줘. 연관도가 0이어도 무조건 결과에 넣어줘
+- 반드시 실제 산출물 문서 내용과 비교하며 판단해.
+
+[출력 형식 예시]
 {{
-  "요금책정": 0.0,
-  "수납": 0.0,
-  "화면개발": 0.0,
-  "모니터링": 0.0,
-  "장애대응": 0.0
+  "요구사항": "",
+  "연관파트": [
+    {{"파트": "Part A", "연관도": 0.85}},
+    {{"파트": "Part C", "연관도": 0.6}}
+  ],
+  "요약": "",
+  "분석 이유" : ""
 }}
+
+[제한 사항]
+- 반드시 정해진 파트 목록 내에서만 판단해줘: ["요금정보", "수납", "화면개발", "모니터링", "운영"]
+- 문서가 없거나 문맥이 애매할 경우, 해당 파트는 생략해도 돼.
+
 """
 
     # RAG 패턴을 적용하기 위한 추가 파라미터 설정
@@ -151,7 +207,7 @@ def analyze_parts(prompt, similar_docs):
         extra_body=rag_params
     )
 
-    # st.write("GPT response:", response.choices[0])
+    #st.write("GPT response:", response.choices[0].message.content)
     # print(response.choices[0].message.content)
 
     try:
@@ -159,97 +215,221 @@ def analyze_parts(prompt, similar_docs):
     except:
         return {}
 
+
+
 # --- Streamlit UI ---
 st.set_page_config(page_title="파트 연관도 분석 대시보드", layout="centered")
-st.title("📊 고객 요구사항 기반 파트 연관도 분석")
 
-prompt = st.text_area("고객 요구사항을 입력하세요", height=150)
+st.sidebar.title("📂 기능 선택")
+mode = st.sidebar.radio("모드를 선택하세요", ["요구사항 분석", "IA 문서기반 조회"])
 
-if st.button("분석 시작") and prompt:
-    with st.spinner("벡터화 및 유사 문서 검색 중..."):
-        embedding = get_embedding(prompt)
-        similar_docs = search_similar_docs(embedding)
-        # st.write("유사 문서 검색 결과:", similar_docs) --잠깐 제거
+st.sidebar.markdown("### 📥 문서 다운로드")
 
-    with st.spinner("GPT로 연관도 분석 중..."):
-        result = analyze_parts(prompt, similar_docs)
+# ✅ streamlit_data/ia_docx 내 문서 압축 다운로드
+if os.listdir(WORD_DOCS_DIR):
+    zip_path = "ia_word_documents_all.zip"
+    with zipfile.ZipFile(zip_path, "w") as zipf:
+        for fname in os.listdir(WORD_DOCS_DIR):
+            fpath = os.path.join(WORD_DOCS_DIR, fname)
+            zipf.write(fpath, arcname=fname)
 
-    if result:
-        st.success("분석 완료! 결과는 다음과 같습니다:")
+    with open(zip_path, "rb") as f:
+        st.sidebar.download_button(
+            label="📦 전체 문서 압축 다운로드",
+            data=f,
+            file_name="ia_word_documents_all.zip",
+            mime="application/zip"
+        )
 
-        print(result)
-        max_part = max(result, key=result.get)
-        for part, score in result.items():
-            if part == max_part:
-                st.markdown(f"<span style='color:red; font-weight:bold'>{part}: {score:.2f}</span>", unsafe_allow_html=True)
-            else:
-                st.write(f"{part}: {score:.2f}")
-                
-        df = pd.DataFrame(list(result.items()), columns=["파트", "연관도 점수"])
-        st.bar_chart(df.set_index("파트"))
+st.sidebar.markdown("---")
 
+# --- IA 문서 업로드 모드 ---
+if mode == "IA 문서기반 조회":
+    st.title("📄 IA 문서 업로드 및 저장")
+
+    # 📥 JSON 로드
+    @st.cache_data
+    def load_json():
+        with open(DATA_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    data = load_data()
+
+    # --- 문서 업로드 ---
+    uploaded_file = st.file_uploader("IA Word 문서를 업로드하세요", type=["docx"])
+    if uploaded_file:
+        # 저장
+        filename = uploaded_file.name
+        save_path = os.path.join(WORD_DOCS_DIR, filename)
+        with open(save_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+
+        # 파싱
+        docx = Document(save_path)
+        paragraphs = [p.text.strip() for p in docx.paragraphs if p.text.strip()]
+        content = paragraphs
+
+        # 파일명에서 req_id, team 추출
+        parts = filename.replace(".docx", "").split("_")
+        req_id = parts[0] if len(parts) > 0 else f"REQ{len(data)+1:03d}"
+        team = parts[1] if len(parts) > 1 else "Unknown"
+
+        # 새 항목 생성
+        new_doc = {
+            "req_id": req_id,
+            "team": team,
+            "filename": filename,
+            "content": content
+        }
+
+        # 기존 JSON에 추가
+        data.append(new_doc)
+        with open(DATA_PATH, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+
+        st.success(f"✅ 업로드 및 저장 완료: {filename}")
+
+
+    st.markdown("----")
+
+    # --- 필터링
+
+    # 🧩 팀 목록 생성 (예외 방지)
+    teams = sorted(set(d.get("team", "Unknown") for d in data if d.get("team")))
+    selected_team = st.selectbox("👨‍💻 팀 선택 (연관 문서 필터링)", ["전체"] + teams)
+
+    # 🔍 키워드 입력
+    keyword = st.text_input("🔍 키워드로 문서 내용 필터링 (선택)", placeholder="예: 오류, LAN, 로그 기록 등")
+
+    # 🔎 필터링
+    filtered = []
+    for d in data:
+        team = d.get("team", "")
+        if selected_team != "전체" and team != selected_team:
+            continue
+        if keyword:
+            content = d.get("content", [])
+            if not any(keyword in para for para in content):
+                continue
+        filtered.append(d)
+
+    # 📄 과제 선택
+    if filtered:
+        def safe_title(doc):
+            return f"{doc.get('req_id', 'REQXXX')} - {doc.get('filename', 'unknown.docx')}"
         
-        
-        ## 결과 파싱
-        # try :
-        #     print("분석 결과:", result)
+        req_ids = [safe_title(d) for d in filtered]
+        selected_doc = st.selectbox("📄 과제 선택", req_ids)
+        selected_id = selected_doc.split(" - ")[0]
 
-        #     # 🎯 JSON 부분 추출
-        #     json_match = re.search(r'\{.*?\}', result, re.DOTALL)
-        #     json_part = json.loads(json_match.group()) if json_match else {}
+        doc = next(
+            (d for d in filtered if d.get("req_id") == selected_id and safe_title(d) == selected_doc),
+            None
+        )
 
-        #     # 📜 설명 텍스트 추출
-        #     text_part = result[json_match.end():].strip() if json_match else result.strip()
+        # 📑 문서 내용 출력
+        if doc:
+            st.subheader(f"📌 과제 ID: {doc.get('req_id', 'REQXXX')}")
+            st.markdown(f"**연관 팀:** `{doc.get('team', 'Unknown')}`")
+            st.markdown(f"**파일명:** `{doc.get('filename', '-')}`")
+            st.divider()
+            st.subheader("📑 문서 내용")
 
-        #     st.write(json_match)
-        #     st.write(json_part)
-        #     st.write(text_part)
-
-        #     # ✅ 연관도 막대 그래프
-        #     st.subheader("🔢 파트 연관도 시각화")
-        #     df = pd.DataFrame(json_part.items(), columns=["파트", "연관도"]).sort_values(by="연관도", ascending=True)
-
-        #     fig, ax = plt.subplots()
-        #     bars = ax.barh(df["파트"], df["연관도"])
-        #     for bar in bars:
-        #         if bar.get_width() == max(df["연관도"]):
-        #             bar.set_color("red")
-        #     ax.set_xlabel("연관도 (0 ~ 1.0)")
-        #     ax.set_title("요구사항에 대한 파트별 연관도")
-        #     st.pyplot(fig)
-
-        #     # 📝 GPT 설명 텍스트 출력
-        #     st.subheader("🗒️ GPT 분석 설명")
-        #     st.markdown(text_part)
-
-
-        # except Exception as e:
-        #     st.error(f"분석 결과 파싱 중 오류 발생: {e}")
-
+            for i, para in enumerate(doc.get("content", []), 1):
+                if keyword and keyword in para:
+                    st.markdown(f"✅ {para}")
+                else:
+                    st.markdown(f"{para}")
+        else:
+            st.warning("📄 선택된 문서를 찾을 수 없습니다.")
     else:
-        st.error("GPT 응답을 분석하지 못했습니다. 프롬프트 또는 설정을 확인하세요.")
+        st.warning("🔍 조건에 해당하는 문서가 없습니다.")
 
 
 
 
-# # 환경변수 로드
-# conn_str = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-# container_name = os.getenv("AZURE_BLOB_CONTAINER")
 
-# # Azure BlobServiceClient 생성
-# blob_service_client = BlobServiceClient.from_connection_string(conn_str)
-# container_client = blob_service_client.get_container_client(container_name)
+# --- 요구사항 분석 모드 ---
+elif mode == "요구사항 분석":
+    st.title("📊 고객 요구사항 기반 파트 연관도 분석")
+    prompt = st.text_area("고객 요구사항을 입력하세요", height=150)
 
-# # Streamlit UI
-# st.markdown('----')
-# uploaded_file = st.file_uploader("문서를 업로드하세요 (.docx)", type=["docx"])
+    if st.button("분석 시작") and prompt:
+        with st.spinner("벡터화 및 유사 문서 검색 중..."):
+            embedding = get_embedding(prompt)
+            similar_docs = search_similar_docs(embedding)
+            # st.write("유사 문서 검색 결과:", similar_docs) --잠깐 제거
 
-# if uploaded_file is not None:
-#     try:
-#         # 파일 업로드 → Blob Storage
-#         blob_client = container_client.get_blob_client(uploaded_file.name)
-#         blob_client.upload_blob(uploaded_file.getvalue(), overwrite=True)
+        with st.spinner("GPT로 연관도 분석 중..."):
+            result = analyze_parts(prompt, similar_docs)
 
-#         st.success(f"✅ {uploaded_file.name} 파일이 성공적으로 업로드되었습니다.")
-#     except Exception as e:
-#         st.error(f"❌ 업로드 실패: {e}")
+        if result:
+            st.success("분석 완료! 결과는 다음과 같습니다:")
+
+            print(result)
+
+
+            # max_part = max(result, key=result.get)
+            # for part, score in result.items():
+            #     if part == max_part:
+            #         st.markdown(f"<span style='color:red; font-weight:bold'>{part}: {score:.2f}</span>", unsafe_allow_html=True)
+            #     else:
+            #         st.write(f"{part}: {score:.2f}")
+                    
+            # df = pd.DataFrame(list(result.items()), columns=["파트", "연관도 점수"])
+            # st.bar_chart(df.set_index("파트"))
+
+            
+            # 결과 파싱
+            try :
+
+                # 문자열이면 json.loads, dict면 그대로 사용
+                if isinstance(result, str):
+                    try:
+                        result = json.loads(result)
+                    except json.JSONDecodeError as e:
+                        st.error(f"❌ GPT 응답 파싱 실패: {e}")
+                        result = None
+                elif isinstance(result, dict):
+                    result = result
+                else:
+                    st.error("❌ GPT 응답 형식이 예상과 다릅니다.")
+                    result = None
+
+            
+                # 📝 요약 및 분석 표시
+                st.markdown("### 📝 요구사항")
+                st.write(result.get("요구사항", "-"))
+
+                st.markdown("### 📌 요약")
+                st.success(result.get("요약", "-"))
+
+                st.markdown("### 🧠 분석 이유")
+                st.info(result.get("분석 이유", "-"))
+
+                # 📑 유사 문서
+                if "유사 IA 문서" in result:
+                    st.markdown("### 📄 유사 IA 문서")
+                    st.code(result["유사 IA 문서"])
+
+                # 📊 연관도 시각화
+                st.markdown("### 📊 파트별 연관도")
+
+                df = pd.DataFrame(result["연관파트"])
+                df = df.sort_values("연관도", ascending=True)
+
+                fig, ax = plt.subplots(figsize=(6, 3.5))
+                ax.barh(df["파트"], df["연관도"])
+                ax.set_xlim(0, 1.0)
+                ax.set_xlabel("연관도 (0.0 ~ 1.0)")
+                ax.set_title("파트별 연관도 분석 결과")
+                st.pyplot(fig)
+
+
+            except Exception as e:
+                st.error(f"분석 결과 파싱 중 오류 발생: {e}")
+
+        else:
+            st.error("지금은 GPT가 퇴근했어요. 다음에 다시 시도하세요!")
+
+
