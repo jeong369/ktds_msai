@@ -28,6 +28,10 @@
   추가 필요해보임 : matplotlib
   pip install streamlit openpyxl azure-identity pandas python-dotenv azure-storage-blob azure-search-documents openai python-docx matplotlib
   python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0
+
+  혹은
+  python -m pip install -r requirements.txt
+  python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0
   ```
   
 - 기타
