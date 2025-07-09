@@ -23,6 +23,13 @@
   AZURE_BLOB_CONTAINER=ia-documetns
   ```
 
+- streamlit.sh
+  ```
+  추가 필요해보임 : matplotlib json
+  pip install streamlit openpyxl azure-identity pandas python-dotenv azure-storage-blob azure-search-documents openai python-docx matplotlib json
+  python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0
+  ```
+  
 - 기타
 
   > 실습 수업자료 : https://github.com/KoreaEva/KTds2 
