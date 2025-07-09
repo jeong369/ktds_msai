@@ -1,0 +1,2 @@
+pip install streamlit openpyxl azure-identity pandas python-dotenv azure-storage-blob azure-search-documents openai python-docx
+python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0
