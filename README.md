@@ -25,8 +25,8 @@
 
 - streamlit.sh
   ```
-  추가 필요해보임 : matplotlib json
-  pip install streamlit openpyxl azure-identity pandas python-dotenv azure-storage-blob azure-search-documents openai python-docx matplotlib json
+  추가 필요해보임 : matplotlib
+  pip install streamlit openpyxl azure-identity pandas python-dotenv azure-storage-blob azure-search-documents openai python-docx matplotlib
   python -m streamlit run app.py --server.port 8000 --server.address 0.0.0.0
   ```
   
