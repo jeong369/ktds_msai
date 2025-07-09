@@ -81,6 +81,7 @@
 - 실시간 검색/요약 → Azure Function + GPT
 - 프론트엔드 시각화 → Streamlit
 
+![diagram_1](https://github.com/user-attachments/assets/6feb4793-6348-4c3b-a3e4-a9685d8a3872)
 
 
 ----
