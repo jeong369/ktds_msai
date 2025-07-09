@@ -1,0 +1,44 @@
+🔹 구성요소별 설명
+📁 1. 정제된 문서 업로드 → Azure Storage
+사용자가 .docx, .json, .txt 등의 IA 문서를 업로드
+
+Azure Blob Storage의 특정 컨테이너에 저장됨
+
+보통 Python으로 BlobServiceClient 통해 업로드 처리
+
+🔍 2. 인덱싱 및 벡터 임베딩 → Cognitive Search + OpenAI
+Azure Cognitive Search가 문서 메타데이터 및 내용 인덱싱
+
+Azure OpenAI 또는 자체 Embedding API로 벡터 임베딩 생성
+
+Cognitive Search의 vectorSearch 필드로 통합
+
+🔧 예시:
+
+json
+복사
+편집
+{
+  "content": "고객 요구사항 내용...",
+  "embedding": [0.123, -0.456, ...]
+}
+⚙️ 3. 실시간 검색/요약 → Azure Function + GPT
+사용자가 검색어 입력 or 요구사항 분석 요청
+
+Azure Function이 Cognitive Search를 호출하여 유사 문서 검색
+
+검색된 문서를 바탕으로 GPT가 요약, 연관도 분석, 영향도 추론 수행
+
+🖥️ 4. 프론트엔드 시각화 → Streamlit
+요구사항 분석, 파트 연관도, IA 문서 요약 결과를 실시간 시각화
+
+Streamlit UI에서:
+
+📑 유사 문서 목록
+
+📊 파트별 연관도 차트
+
+📄 요약 텍스트 및 다운로드 버튼 등 표시
+
+✅ 흐름 요약
+사용자 → 📄 업로드 → ☁️ 저장 → 🔍 임베딩/색인 → ⚡ 검색/분석 → 📊 UI 시각화
