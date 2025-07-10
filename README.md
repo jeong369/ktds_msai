@@ -103,7 +103,7 @@
 
 #### 🎯 1. 자연어 임베딩 기반 유사 문서 검색
 
-- `text-embedding-3-small` 모델을 Azure OpenAI에 배포하고 AI Search에 연결
+- 임베딩 모델을 Azure OpenAI에 배포하고 AI Search에 연결
 - 요구사항 → 벡터 임베딩 생성 → 인덱스 탐색 → 관련 문서 추출(top-5)
 
 
