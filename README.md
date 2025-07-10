@@ -82,7 +82,7 @@
 
 - 정제된 문서 업로드 → Azure Storage
 - 인덱싱 및 벡터 임베딩 → Cognitive Search + OpenAI
-- 실시간 검색/요약 → Azure Function + GPT
+- 실시간 검색/요약 → GPT
 - 프론트엔드 시각화 → Streamlit
 
 ![diagram_1](https://github.com/user-attachments/assets/6feb4793-6348-4c3b-a3e4-a9685d8a3872)
@@ -119,6 +119,7 @@
 
 > 웹앱 : https://user24-webapp-001-emafesfpf9e9ehae.eastus-01.azurewebsites.net/
 > (최종) 웹앱2 : https://user24-webapp-cij-002-cwhmdxf6atfsb9e4.eastus-01.azurewebsites.net/
+> (최최종) 웹앱3 : https://user24-webapp-003-d7a2ggejhkhdbwgn.eastus-01.azurewebsites.net/
 
 
 
@@ -182,7 +183,7 @@
 - 정제된 데이터
 
     "id": f"REQ{str(i).zfill(3)}",
-    "part": part,
+    "team": part,
     "요구사항": f"[{part}] {random.choice(sample_needs)}",
     "요구사항 배경 및 상세 내용": random.choice(sample_backgrounds),
     "개발 요건": random.choice(sample_requirements),
