@@ -13,16 +13,12 @@ import matplotlib.font_manager as fm
 # plt.rcParams['axes.unicode_minus'] = False
 
 # 프로젝트 내 폰트 경로 <- 웹앱에서 폰트 별도 없기 때문에 matplotlib에 폰트 등록
-try:
-    font_path = os.path.join("font", "NanumGothic-Bold.ttf")
-    fm.fontManager.addfont(font_path)
-    fontprop = fm.FontProperties(fname=font_path)
-    plt.rcParams['font.family'] = fontprop.get_name()
-except Exception as e:
-    print("⚠️ 폰트 로딩 실패, 기본 폰트 사용:", e)
-    plt.rcParams['font.family'] = 'DejaVu Sans'
-
+font_path = os.path.join("font", "NanumGothic-Bold.ttf")
+fontprop = fm.FontProperties(fname=font_path)
+plt.rcParams['font.family'] = fontprop.get_name()
 plt.rcParams['axes.unicode_minus'] = False
+fm.fontManager.addfont(font_path)  # 강제 등록
+
 
 # import openai
 from openai import AzureOpenAI
@@ -115,33 +111,22 @@ def search_similar_docs(embedding):
         "api-key": SEARCH_API_KEY
     }
     payload = {
-        "vector": {
-            "value": embedding,
-            "fields": "text_vector"
-        },
+        "vector": embedding,
         "top": 5,
-        "select": "chunk,title"
+        "fields": "text_vector",
+        "select": "chunk,title",
+        "vectorFields": "text_vector"
     }
     url = f"{SEARCH_ENDPOINT}/indexes/{SEARCH_INDEX_NAME}/docs/search?api-version=2023-07-01-preview"
     # url = f"{SEARCH_ENDPOINT}/indexes/{SEARCH_INDEX_NAME}/docs/search?api-version=2025-01-01-preview"
     response = requests.post(url, headers=headers, json=payload)
-
-    # st.write("🔎 요청 URL:", url)
-    # st.write("임베딩 길이:", len(embedding))
-    # st.write("🔎 상태 코드:", response.status_code)
-    # st.write("🔎 응답 본문:", response.text)
-
-    if response.status_code != 200:
-        st.error(f"검색 실패: {response.status_code} - {response.text}")
-        return []
-
     return response.json().get("value", [])
 
 
 # --- GPT를 통한 파트 연관도 분석 ---
 def analyze_parts(prompt, similar_docs):
     examples = "\n".join([
-        f"{i+1}. 요구사항: \"{doc['chunk'][:800]}...\"\n   연관 파트: 화면개발, 모니터링"
+        f"{i+1}. 요구사항: \"{doc['chunk'][:80]}...\"\n   연관 파트: 화면개발, 모니터링"
         for i, doc in enumerate(similar_docs)
     ])
 
@@ -161,19 +146,22 @@ def analyze_parts(prompt, similar_docs):
 [입력된 고객 요구사항]
 요구사항: "{prompt}" ← 사용자의 실제 입력이 들어갈 자리
 
+[IA 문서 예시]
+※ 다음은 벡터 유사도로 검색된 실제 IA 산출물들이다. 각 문서에는 관련된 요구사항과 담당 파트가 포함되어 있다.
+{examples}
+
 [분석 방식]
 - 각 IA 문서의 내용, 연관 파트를 참고하여 현재 요구사항이 어떤 파트와 관련이 있는지 판단해.
 - 기능 영역, UI/UX, 모니터링, 운영 자동화, 수납, 요금 등의 키워드를 활용해서 판단하되, 단순 키워드 일치보다 문맥의 목적과 작업 흐름을 중점으로 판단해.
-- 관련된 파트는 여러 개일 수 있으며, 각 파트에 대해 0.0 ~ 1.0 사이 연관도 점수를 정수 두 자릿수 소수로 표시해줘. 연관도가 0이어도 무조건 결과에 넣어줘.
-- 연관도가 높은 연관이유도 확인해줘.
+- 관련된 파트는 여러 개일 수 있으며, 각 파트에 대해 0.0 ~ 1.0 사이 연관도 점수를 정수 두 자릿수 소수로 표시해줘. 연관도가 0이어도 무조건 결과에 넣어줘
 - 반드시 실제 산출물 문서 내용과 비교하며 판단해.
 
 [출력 형식 예시]
 {{
   "요구사항": "",
   "연관파트": [
-    {{"파트": "Part A", "연관도": 0.85, "연관이유":"비슷한 기능을 개발한 적이 2번 있어"}},
-    {{"파트": "Part C", "연관도": 0.6, "연관이유":"비슷한 기능을 개발한 적이 1번 있어"}}
+    {{"파트": "Part A", "연관도": 0.85}},
+    {{"파트": "Part C", "연관도": 0.6}}
   ],
   "요약": "",
   "분석 이유" : ""
@@ -219,7 +207,7 @@ def analyze_parts(prompt, similar_docs):
         extra_body=rag_params
     )
 
-    # st.write("GPT response:", response.choices[0].message.content)
+    #st.write("GPT response:", response.choices[0].message.content)
     # print(response.choices[0].message.content)
 
     try:
@@ -370,19 +358,8 @@ elif mode == "요구사항 분석":
         with st.spinner("벡터화 및 유사 문서 검색 중..."):
             embedding = get_embedding(prompt)
             similar_docs = search_similar_docs(embedding)
-            # st.write("유사 문서 검색 결과:", similar_docs)
+            # st.write("유사 문서 검색 결과:", similar_docs) --잠깐 제거
 
-            # --- 유사 문서 결과 표시 ---
-            if similar_docs != []:
-                titles = [doc.get("title", "") for doc in similar_docs]
-                st.markdown("### 🔍 유사 문서 목록 (파일명)")
-                for title in titles:
-                    st.write(f"📄 {title}")
-                st.write("👍 실제 IA 문서를 조회하러 가세요!")
-            else:
-                st.write("유사 문서 검색 결과 없음.")
-
-        st.markdown("----")
         with st.spinner("GPT로 연관도 분석 중..."):
             result = analyze_parts(prompt, similar_docs)
 
@@ -430,7 +407,6 @@ elif mode == "요구사항 분석":
                 st.markdown("### 🧠 분석 이유")
                 st.info(result.get("분석 이유", "-"))
 
-
                 # 📑 유사 문서
                 if "유사 IA 문서" in result:
                     st.markdown("### 📄 유사 IA 문서")
@@ -448,11 +424,6 @@ elif mode == "요구사항 분석":
                 ax.set_xlabel("연관도 (0.0 ~ 1.0)")
                 ax.set_title("파트별 연관도 분석 결과")
                 st.pyplot(fig)
-
-                # 📝 연관 이유 표시
-                st.markdown("### 📝 연관 이유 설명")
-                for _, row in df.iterrows():
-                    st.markdown(f"- **{row['파트']}**: {row['연관이유']}")
 
 
             except Exception as e:
